@@ -1,9 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-<!--
-TODO:
-for the clouds - rerun random properties when wrapping
--->
 
 <head>
   <meta charset="UTF-8">
@@ -116,10 +112,9 @@ for the clouds - rerun random properties when wrapping
     };
 
     //---
-    //todo physics
+    //TODO: physics
     NARIZ._registerModule('world', {
       FIXED_DT: 1 / 60, // 60 ticks per second
-      // Add more world/global settings here as needed
     });
 
     NARIZ._registerModule('event', {
@@ -301,19 +296,19 @@ for the clouds - rerun random properties when wrapping
         }
       },
       entities: [
-        
-                {
-                  id: 'hero',
-                  name: 'Hero',
-                  animationSpeed: 0.2,
-                  speedX: 1.4, // meters per second
-                  hp: 10,
-                  spriteGroup: 'archer',
-                  color: 'orange',
-                  x: '50%',
-                  y: '100%-height',
-                },
-        
+
+        {
+          id: 'hero',
+          name: 'Hero',
+          animationSpeed: 0.2,
+          speedX: 1.4, // meters per second
+          hp: 10,
+          spriteGroup: 'archer',
+          color: 'orange',
+          x: '50%',
+          y: '100%-height',
+        },
+
 
         {
           id: 'cloud',
@@ -337,63 +332,63 @@ for the clouds - rerun random properties when wrapping
           }
 
         },
-        
-        
-                {
-                  id: 'tree',
-                  spriteGroupTiles: [
-                    {
-                      spriteGroup: ['trunk0'],
-                      status: ['idle'],
-                      color: 'red',
-                      turtle: 'up'
-                    },
-                    {
-                      count: [1, 5],
-                      turtle: 'up',
-                      spriteGroup: ['trunk1', 'trunk2'],
-                      status: ['idle'],
-                      color: 'red',
-                    },
-                    {
-                      spriteGroup: 'leaves1',
-                      status: 'idle',
-                      color: ['yellow', 'orange'],
-                      turtle: 'left'
-                    },
-                    {
-                      spriteGroup: 'leaves0',
-                      status: 'idle',
-                      color: 'LAST_COLOR',
-                      turtle: 'right*2'
-                    },
-                    {
-                      spriteGroup: 'leaves2',
-                      status: 'idle',
-                      color: 'LAST_COLOR',
-                    },
-                  ],
-        
-                  count: 3,
-                  //xRange: ['0%', '100%-width'],
-                  //xOffset: [0, 'width'],
-                  xStep: ['width', 'width*2', 'width*3', 'width*4'],
-                  //x:'width*5',
-                  y: '100%-height',
-        
-        
-                },
-        
-                {
-                  id: 'grass',
-                  spriteGroup: 'grass',
-                  color: 'green',
-                  count: 20,
-                  xEnd: '100%',
-                  xStep: 'width',
-                  y: '100%-height',
-                },
-        
+
+
+        {
+          id: 'tree',
+          spriteGroupTiles: [
+            {
+              spriteGroup: ['trunk0'],
+              status: ['idle'],
+              color: 'red',
+              turtle: 'up'
+            },
+            {
+              count: [1, 5],
+              turtle: 'up',
+              spriteGroup: ['trunk1', 'trunk2'],
+              status: ['idle'],
+              color: 'red',
+            },
+            {
+              spriteGroup: 'leaves1',
+              status: 'idle',
+              color: ['yellow', 'orange'],
+              turtle: 'left'
+            },
+            {
+              spriteGroup: 'leaves0',
+              status: 'idle',
+              color: 'LAST_COLOR',
+              turtle: 'right*2'
+            },
+            {
+              spriteGroup: 'leaves2',
+              status: 'idle',
+              color: 'LAST_COLOR',
+            },
+          ],
+
+          count: 3,
+          //xRange: ['0%', '100%-width'],
+          //xOffset: [0, 'width'],
+          xStep: ['width', 'width*2', 'width*3', 'width*4'],
+          //x:'width*5',
+          y: '100%-height',
+
+
+        },
+
+        {
+          id: 'grass',
+          spriteGroup: 'grass',
+          color: 'green',
+          count: 20,
+          xEnd: '100%',
+          xStep: 'width',
+          y: '100%-height',
+        },
+
 
       ],
       expandedEntities: [],
@@ -495,27 +490,6 @@ for the clouds - rerun random properties when wrapping
         }
 
         function parseProperties(ent) {
-          //console.log(ent.status)
-          /*
-          // Position: x,y,xRange,yRange
-          let thisX = parseMaybeRangedProp(ent, 'x', 'x');
-          let thisY = parseMaybeRangedProp(ent, 'y', 'y');
-          // Steps: xStep,yStep,speedX,speedY,xStepRange,yStepRange,speedXRange,speedYRange
-          let thisXStep = parseMaybeRangedProp(ent, 'xStep', 'x') || 0;
-          let thisYStep = parseMaybeRangedProp(ent, 'yStep', 'y') || 0;
-          // NEW: Parse xOffset/yOffset
-          let thisXOffset = parseMaybeRangedProp(ent, 'xOffset', 'x') || 0;
-          let thisYOffset = parseMaybeRangedProp(ent, 'yOffset', 'y') || 0;
-          let thisSpeedX = parseMaybeRangedProp(ent, 'speedX') || 0;
-          let thisSpeedY = parseMaybeRangedProp(ent, 'speedY') || 0;
-          // Animation speed: animationSpeed, animationSpeedRange
-          let thisAnimationSpeed = parseMaybeRangedProp(ent, 'animationSpeed') || ent.animationSpeed;
-          // Status, color, spriteGroup
-          let thisStatus = parseProp(ent, 'status');
-          let thisColor = parseProp(ent, 'color');
-          let thisSpriteGroup = parseProp(ent, 'spriteGroup');
-          */
-          //
           let entParsedProperties = {
             // Position: x,y,xRange,yRange
             x: parseMaybeRangedProp(ent, 'x', 'x'),
@@ -548,23 +522,15 @@ for the clouds - rerun random properties when wrapping
           const previousProps = NARIZ.ENTITIES.globals.previousProps;
           //console.log(NARIZ.ENTITIES.globals)
           if (entParsedProperties.color) {
-            //if (typeof ent.previopreviousProps=='undefined')
-            //  ent.previopreviousProps={}
             previousProps.color = entParsedProperties.color;//thisColor;
             //console.log(thisColor, previousProps);
           }
 
           return entParsedProperties;
-          /*
-          return {
-            thisX, thisY, thisXStep, thisYStep, thisXOffset, thisYOffset,
-            thisSpeedX, thisSpeedY, thisAnimationSpeed, thisStatus, thisColor,
-            thisSpriteGroup
-          }
-            */
         }
 
         // --- Handle composite entities (spriteGroupTiles) with count ---
+        // LOGO-like Turtle
         if (ent.spriteGroupTiles && Array.isArray(ent.spriteGroupTiles)) {
           // 1. Generate N composite children (each a tree, for example)
           let countComposite = parseProp(ent, 'count') || 1;
@@ -640,22 +606,6 @@ for the clouds - rerun random properties when wrapping
 
             let parsedProps = parseProperties(ent);
 
-            /*
-            let thisX = parseMaybeRangedProp('x', 'x');
-            let thisY = parseMaybeRangedProp('y', 'y');
-            let thisXStep = parseMaybeRangedProp('xStep', 'x') || 0;
-            let thisYStep = parseMaybeRangedProp('yStep', 'y') || 0;
-            // NEW: Parse xOffset/yOffset
-            let thisXOffset = parseMaybeRangedProp('xOffset', 'x') || 0;
-            let thisYOffset = parseMaybeRangedProp('yOffset', 'y') || 0;
-            */
-
-            //let finalX = Math.ceil(x + xOffset + (xStep ? xSum + xStep - xStep : 0));
-            //let finalY = Math.ceil(y + yOffset + (yStep ? ySum + yStep - yStep : 0));
-            //let finalX = Math.ceil(thisX + (thisXStep ? i * thisXStep : 0));
-            //let finalY = Math.ceil(thisY + (thisYStep ? i * thisYStep : 0));
-
-
             expanded.push({
               // Copy extra properties
               ...ent,
@@ -668,11 +618,6 @@ for the clouds - rerun random properties when wrapping
               height: composite.height,
               spriteGroup: undefined, //composite entities are not drawn, they just act as containers
             });
-            //const hhhhhhhhhh = NARIZ.ENTITIES.getEntityHeight(ent);
-            //const ww = NARIZ.ENTITIES.getEntityWidth(ent);
-            //console.log('width:', ww, 'height:', hhhhhhhhhh, finalX, thisX, thisXStep, expanded)
-            //xSum += parsedProps.xStep;
-            //ySum += parsedProps.yStep;
           }
           return { entities: expanded, bbox: null };
         }
@@ -684,58 +629,14 @@ for the clouds - rerun random properties when wrapping
         //let ySum = 0;
         for (let i = 0; i < count; i++) {
           // Randomize each property per instance.
-
-          /*
-          let { thisX, thisY, thisXStep, thisYStep, thisXOffset, thisYOffset,
-            thisSpeedX, thisSpeedY, thisAnimationSpeed, thisStatus, thisColor,
-            thisSpriteGroup } = parseProperties(ent);
-          */
           let parsedProps = parseProperties(ent);
-
-          /*
-          // Position: x,y,xRange,yRange
-          let thisX = parseMaybeRangedProp('x', 'x');
-          let thisY = parseMaybeRangedProp('y', 'y');
-          // Steps: xStep,yStep,speedX,speedY,xStepRange,yStepRange,speedXRange,speedYRange
-          let thisXStep = parseMaybeRangedProp('xStep', 'x') || 0;
-          let thisYStep = parseMaybeRangedProp('yStep', 'y') || 0;
-          // NEW: Parse xOffset/yOffset
-          let thisXOffset = parseMaybeRangedProp('xOffset', 'x') || 0;
-          let thisYOffset = parseMaybeRangedProp('yOffset', 'y') || 0;
-          let thisSpeedX = parseMaybeRangedProp('speedX') || 0;
-          let thisSpeedY = parseMaybeRangedProp('speedY') || 0;
-          // Animation speed: animationSpeed, animationSpeedRange
-          let thisAnimationSpeed = parseMaybeRangedProp('animationSpeed') || ent.animationSpeed;
-          // Status, color, spriteGroup
-          let thisStatus = parseProp('status');
-          let thisColor = parseProp('color');
-          let thisSpriteGroup = parseProp('spriteGroup');
-          */
-
-          // Calculate final positions; include step offset if present.
-          /*
-          let finalX = Math.ceil(thisX + (thisXStep ? i * thisXStep : 0));
-          let finalY = Math.ceil(thisY + (thisYStep ? i * thisYStep : 0));
-          */
-          //let finalX = Math.ceil(thisX + thisXOffset + (thisXStep ? xSum + thisXStep - thisXStep : 0));
-          //let finalY = Math.ceil(thisY + thisYOffset + (thisYStep ? ySum + thisYStep - thisYStep : 0));
           let e = Object.assign({}, ent, parsedProps, {
-            //x: finalX,
-            //y: finalY,
-            //speedX: thisSpeedX,
-            //speedY: thisSpeedY,
-            //animationSpeed: thisAnimationSpeed,
-            //status: thisStatus,
-            //color: thisColor,
-            //spriteGroup: thisSpriteGroup,
             width: NARIZ.ENTITIES.getEntityWidth(ent),
             height: NARIZ.ENTITIES.getEntityHeight(ent),
           });
           expanded.push(e);
-          //xSum += parsedProps.xStep;
-          //ySum += parsedProps.yStep;
         }
-        //FIXME: expose the internal method -> not clean, but can work for now
+        //FIXME: expose the internal method -> a bit ugly, but can work for now
         NARIZ.ENTITIES.parseProperties = parseProperties;
         return { entities: expanded, bbox: { minX: expanded[0].x, maxX: expanded[0].x, minY: expanded[0].y, maxY: expanded[0].y } };
       },

@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+TODO:
+for the clouds - rerun random properties when wrapping
+-->
+
+<head>
+  <meta charset="UTF-8">
+  <!-- The viewport meta tag controls layout on mobile browsers -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nariz</title>
+  <style>
+    html,
+    body {
+      background: black;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #v {
+      background: gray;
+      width: 100vw;
+      height: 100vh;
+      border: 5px solid white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+    }
+
+    #c {
+      background: black;
+      display: block;
+      /* NOTE: width/height will be set by JS to maintain aspect ratio */
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="v">
+    <canvas id="c"></canvas>
+  </div>
+
+  <script>
+    const NARIZ = {
+      _LAST_DELTA_IN_SECONDS: 0,
+      modules: {},
+      _processHandlers: [],
+      wrap(fn, target) { //"converts" a function into a method
+        return function (...args) {
+          return fn(target, ...args);
+        };
+      },
+      registerProcessHandler(fn) {
+        this._processHandlers.push(fn);
+      },
+      _registerModule(id, data) {
+        const moduleId = id.toUpperCase()
+        NARIZ[id.toUpperCase()] = data; //register the module for global access
+        this.modules[moduleId] = data //register the module for cycling
+      },
+      [`👃`]() {
+        // Initialize all modules
+        for (const moduleId in this.modules) {
+          const currentModule = this.modules[moduleId];
+          if (typeof currentModule._INIT === 'function') {
+            currentModule._INIT.call(currentModule, this);
+          }
+        }
+        // After initialization call ready functions so they can use resulting data from init calls
+        for (const moduleId in this.modules) {
+          const currentModule = this.modules[moduleId];
+          if (typeof currentModule._READY === 'function') {
+            currentModule._READY.call(currentModule, this);
+          }
+        }
+        // Start the game loop
+        this._lastTimestamp = performance.now();
+        this._gameLoop(this._lastTimestamp);
+      },
+      _gameLoop(currentTime = 0) {
+        // Calculate the delta as the difference between the current and previous times
+        let delta = currentTime - this._lastTimestamp;
+        // Clamp delta to a maximum of 0.1 seconds (100 ms)
+        delta = Math.min(delta, 100);
+        this._LAST_DELTA_IN_SECONDS = delta / 1000;
+        this._lastTimestamp = currentTime;
+
+        // Call _PROCESS for all modules
+        for (const moduleId in this.modules) {
+          const mod = this.modules[moduleId];
+          if (typeof mod._PROCESS === 'function') {
+            mod._PROCESS.call(mod, currentTime, this._LAST_DELTA_IN_SECONDS);
+          }
+        }
+
+        // Call registered process handlers
+        for (const handler of this._processHandlers) {
+          handler(currentTime, this._LAST_DELTA_IN_SECONDS);
+        }
+        //request a new frame 
+        requestAnimationFrame(this._gameLoop.bind(this));
+      },
+      _raiseEvent(actionId, ...args) {
+        // Call _ON handlers for all modules
+        for (const moduleId in this.modules) {
+          const mod = this.modules[moduleId];
+          if (mod._ON && typeof mod._ON[actionId] === 'function') {
+            mod._ON[actionId].call(mod, ...args);
+          }
+        }
+      }
+    };
+
+    //---
+    //todo physics
+    NARIZ._registerModule('world', {
+      FIXED_DT: 1 / 60, // 60 ticks per second
+      // Add more world/global settings here as needed
+    });
+
+    NARIZ._registerModule('event', {
+      globals: {
+        keys: {},
+        actions: {},
+        held: {},
+        domListeners: {},
+      },
+      define(actionId, events) {
+        this.globals.actions[actionId] = events;
+        // Register DOM listeners for each event type if not already done
+        for (const ev of events) {
+          if (!this.globals.domListeners[ev.event]) {
+            window.addEventListener(ev.event, this.handleDomEvent.bind(this, ev.event));
+            this.globals.domListeners[ev.event] = true;
+          }
+          // For keyboard, always register both keydown and keyup for correct held state
+          if (ev.event === 'key') {
+            if (!this.globals.domListeners['keydown']) {
+              window.addEventListener('keydown', this.handleDomEvent.bind(this, 'keydown'));
+              this.globals.domListeners['keydown'] = true;
+            }
+            if (!this.globals.domListeners['keyup']) {
+              window.addEventListener('keyup', this.handleDomEvent.bind(this, 'keyup'));
+              this.globals.domListeners['keyup'] = true;
+            }
+          }
+        }
+      },
+      handleDomEvent(eventType, event) {
+        // For each action, check if this event matches any of its triggers
+        for (const actionId in this.globals.actions) {
+          const triggers = this.globals.actions[actionId];
+          for (const trigger of triggers) {
+            // Keyboard events
+            if (trigger.event === 'key') {
+              if ((eventType === 'keydown' || eventType === 'keyup') && trigger.code === event.key) {
+                if (eventType === 'keydown') {
+                  if (!this.globals.held[actionId]) {
+                    NARIZ._raiseEvent(actionId, event);
+                  }
+                  this.globals.held[actionId] = true;
+                } else if (eventType === 'keyup') {
+                  this.globals.held[actionId] = false;
+                  // Optionally, is it possible to raise a release event here if needed
+                }
+              }
+            } else if (trigger.event === eventType) {
+              // Non-keyboard events (e.g., resize)
+              NARIZ._raiseEvent(actionId, event);
+            }
+          }
+        }
+      },
+      _INIT() {
+        // No need to add listeners here; handled in define()
+      },
+      _PROCESS() {
+        // Fire held actions every frame (for keys)
+        for (const actionId in this.globals.held) {
+          if (this.globals.held[actionId]) {
+            NARIZ._raiseEvent(actionId);
+          }
+        }
+      }
+    });
+
+    //---
+
+    NARIZ._registerModule('sprites', {
+      spriteGroups: {
+        'cloud': {
+          idle: ['006CFEFF7E000000'],
+        },
+        'cloud1': {
+          idle: ['000070FF00000000', '0000E4FE00000000'],
+        },
+        'grass': {
+          idle: ['000000002020AAFF', '00000000402074FF']
+        },
+        'archer': {
+          idle: ['FA7D697DFFFD7D46', '02F97D697FFDFD46']
+        },
+        'swordman': {
+          idle: ['397D697DFFFD7C44', '00397D697DFFFD44']
+        },
+        'cat': {
+          idle: ['00519F95FF7E7EAA', '0000919F95FF7EAA'],
+        },
+        'trunk0': {
+          idle: ['3C3C3C2C7C7C5E7E']
+        },
+        'trunk1': {
+          idle: ['3C3E7E5E7C743C3C']
+        },
+        'trunk2': {
+          idle: ['3C3C3E5E767C7C3C']
+        },
+        'leaves0': {
+          idle: ['00007EEFBFFB7F00', '00007EBFFDEF7F00']
+        },
+        'leaves1': {
+          idle: ['3C7EFFFFFFFFFF7E']
+        },
+        'leaves2': {
+          idle: ['0000F8FEFEFEFC00']
+        }
+      },
+      canvas: null,
+      _INIT() {
+        this.canvas = document.getElementById('c');
+      },
+
+      drawSprite(sprite, x, y, flipX = false, flipY = false, rotate = 0, color = 'black') {
+        //console.log('nnnnnnnn',sprite, x, 'y:',y, 'flip',flipX, flipY, rotate, color)
+        const cellSize = NARIZ.VIEWPORT._CELL_SIZE; // e.g., 8
+        if (!sprite || typeof sprite !== 'string') return;
+        const ctx = this.canvas.getContext('2d');
+
+        // Parse the sprite into an 8x8 binary matrix.
+        let matrix = [];
+        for (let i = 0; i < 16; i += 2) {
+          const row = parseInt(sprite.slice(i, i + 2), 16)
+            .toString(2)
+            .padStart(8, '0');
+          matrix.push(row.split('').map(bit => parseInt(bit)));
+        }
+        if (flipX) matrix = matrix.map(row => row.reverse());
+        if (flipY) matrix = matrix.reverse();
+        for (let r = 0; r < rotate; r++) {
+          matrix = matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex])).reverse();
+        }
+
+        ctx.save();
+        ctx.fillStyle = color;
+
+        // Convert virtual coordinates to screen coordinates.
+        const [sx, sy] = NARIZ.VIEWPORT.toScreen(x, y);
+
+        // Calculate the size of each drawn cell; it should already be an integer.
+        const pixelSize = Math.round(cellSize * NARIZ.VIEWPORT._SCALE);
+
+        // Draw the sprite using the exact pixel size.
+        for (let i = 0; i < 8; i++) {
+          for (let j = 0; j < 8; j++) {
+            if (matrix[i][j] === 1) {
+              ctx.fillRect(sx + j * pixelSize, sy + i * pixelSize, pixelSize, pixelSize);
+            }
+          }
+        }
+        ctx.restore();
+      },
+
+    });
+
+    //---
+
+    NARIZ._registerModule('entities', {
+      globals: {
+        previousProps: {},
+        // Defaults
+        defaults: {
+          frameIndex: 0,
+          frameTime: 0,
+          lastTimestamp: 0,
+          flipX: false,
+          flipY: false,
+          rotate: 0,
+          color: 'white',
+          count: 1,
+          status: 'idle',
+          animationSpeed: 0.2,
+          speedX: 1.0,
+          speedY: 9.81,
+          xSum: 0,
+          ySum: 0,
+          //previousProps:{},
+        }
+      },
+      entities: [
+        
+                {
+                  id: 'hero',
+                  name: 'Hero',
+                  animationSpeed: 0.2,
+                  speedX: 1.4, // meters per second
+                  hp: 10,
+                  spriteGroup: 'archer',
+                  color: 'orange',
+                  x: '50%',
+                  y: '100%-height',
+                },
+        
+
+        {
+          id: 'cloud',
+          speedX: [1.0, 1.5, 2.0, 0.8, 1.2], // meters per second, array for random speeds
+          spriteGroup: ['cloud', 'cloud1'],
+          animationSpeedRange: [0.1, 0.2],
+          color: ['cyan', '#ff00ff'],
+          count: 20,
+          x: 0,
+          yRange: ['0%', '30%'],
+          xStep: ['width/2', 'width'],
+          _PROCESS() {
+            this.moveLeft();
+            //NARIZ.ENTITIES.moveEntityLeft(this);
+            //console.log(this.x,this.width)
+            if (this.x < -this.width) {
+              this.reparse() //reuse the same entity but generate new random properties
+              this.moveTo('100%', this.y); //thanks to "wrap" we can use "moveTo" as a method instead of:
+              //NARIZ.ENTITIES.moveEntityTo(this, '100%', this.y);
+            }
+          }
+
+        },
+        
+        
+                {
+                  id: 'tree',
+                  spriteGroupTiles: [
+                    {
+                      spriteGroup: ['trunk0'],
+                      status: ['idle'],
+                      color: 'red',
+                      turtle: 'up'
+                    },
+                    {
+                      count: [1, 5],
+                      turtle: 'up',
+                      spriteGroup: ['trunk1', 'trunk2'],
+                      status: ['idle'],
+                      color: 'red',
+                    },
+                    {
+                      spriteGroup: 'leaves1',
+                      status: 'idle',
+                      color: ['yellow', 'orange'],
+                      turtle: 'left'
+                    },
+                    {
+                      spriteGroup: 'leaves0',
+                      status: 'idle',
+                      color: 'LAST_COLOR',
+                      turtle: 'right*2'
+                    },
+                    {
+                      spriteGroup: 'leaves2',
+                      status: 'idle',
+                      color: 'LAST_COLOR',
+                    },
+                  ],
+        
+                  count: 3,
+                  //xRange: ['0%', '100%-width'],
+                  //xOffset: [0, 'width'],
+                  xStep: ['width', 'width*2', 'width*3', 'width*4'],
+                  //x:'width*5',
+                  y: '100%-height',
+        
+        
+                },
+        
+                {
+                  id: 'grass',
+                  spriteGroup: 'grass',
+                  color: 'green',
+                  count: 20,
+                  xEnd: '100%',
+                  xStep: 'width',
+                  y: '100%-height',
+                },
+        
+
+      ],
+      expandedEntities: [],
+
+      parsePosition(entity, expr, axis) {
+        const cellSize = NARIZ.VIEWPORT._CELL_SIZE;
+        const vw = NARIZ.VIEWPORT._VIRTUAL_CANVAS_WIDTH;
+        const vh = NARIZ.VIEWPORT._VIRTUAL_CANVAS_HEIGHT;
+        const size = axis === 'x' ? vw : vh;
+        const spriteSizeX = NARIZ.ENTITIES.getEntityWidth(entity); //cellSize * 8; // One sprite is 8x8 cells
+        const spriteSizeY = NARIZ.ENTITIES.getEntityHeight(entity); //cellSize * 8; // One sprite is 8x8 cells
+        if (typeof expr === 'number') return expr;
+        if (typeof expr !== 'string') return 0;
+        let val = expr;
+        if (axis === 'x') {
+          val = val.replace(/(\d+)%/g, (m, p1) => (parseFloat(p1) / 100 * vw));
+        }
+        if (axis === 'y') {
+          val = val.replace(/(\d+)%/g, (m, p1) => (parseFloat(p1) / 100 * vh));
+        }
+        // Replace 'width' and 'height' with sprite size
+        val = val.replace(/width/g, spriteSizeX)
+          .replace(/height/g, spriteSizeY);
+        try {
+          return eval(val);
+        } catch {
+          return 0;
+        }
+      },
+
+      // Recursively parse and expand an entity (and its spriteGroupTiles)
+      parseEntity(entity, parentX = 0, parentY = 0, parentTurtle = { x: 0, y: 0, dir: 'up' }) {
+        ;
+        //force defaults values into entity
+        let ent = Object.assign({}, NARIZ.ENTITIES.globals.defaults, entity);
+        // Handle randomization and ranges
+
+        function parseKeywords(ent, val) {
+          const previousProps = NARIZ.ENTITIES.globals.previousProps;//ent.previousProps;
+          if (typeof val == 'string') {
+            switch (val) {
+              case 'LAST_COLOR':
+                //console.log('ppppp', previousProps)
+                //val = ent.previousProps.color;
+                val = previousProps.color
+                break;
+            }
+          }
+          //console.log(val);
+          return val;
+        }
+
+        // Utility: pick a random value from an array or return the value itself
+        function pick(ent, val) {
+          let theVal = val;
+          if (Array.isArray(val)) {
+            theVal = val[Math.floor(Math.random() * val.length)];
+          }
+          return parseKeywords(ent, theVal);
+        }
+
+        // Utility: pick a random value in a range [min, max]
+        function pickRange(ent, val, axis) {
+          if (Array.isArray(val) && val.length === 2 && typeof val[0] !== 'object') {
+            // Numeric or string range
+            if (!isNaN(val[0]) && !isNaN(val[1])) {
+              return val[0] + Math.random() * (val[1] - val[0]);
+            } else {
+              // Assume string expressions (e.g. '0%', '40%')
+              return NARIZ.ENTITIES.parsePosition(ent, val[0], axis)
+                + Math.random() * (NARIZ.ENTITIES.parsePosition(ent, val[1], axis) - NARIZ.ENTITIES.parsePosition(ent, val[0], axis));
+            }
+          }
+          return this.pick(ent, val);
+        }
+
+        function parsePropVal(ent, prop, axis) {
+          if (Array.isArray(ent[prop])) {
+            if (ent[prop].length === 2 && (prop.endsWith('Range') || prop === 'x' || prop === 'y')) {
+              // Range: pick a value between two
+              return pickRange(ent, ent[prop], axis);
+            } else {
+              // Array: pick one
+              return pick(ent, ent[prop], axis);
+            }
+          }
+          return parseKeywords(ent, ent[prop]);
+        }
+
+        function parseMaybeRangedProp(ent, prop, axis) {
+          let val = parsePropVal(ent, prop, axis);
+          if (val) return NARIZ.ENTITIES.parsePosition(ent, val, axis);
+          val = parsePropVal(ent, prop + 'Range', axis);
+          return NARIZ.ENTITIES.parsePosition(ent, val, axis);
+        }
+
+        function parseProp(ent, prop, axis) {
+          return parsePropVal(ent, prop, axis);
+        }
+
+        function parseProperties(ent) {
+          //console.log(ent.status)
+          /*
+          // Position: x,y,xRange,yRange
+          let thisX = parseMaybeRangedProp(ent, 'x', 'x');
+          let thisY = parseMaybeRangedProp(ent, 'y', 'y');
+          // Steps: xStep,yStep,speedX,speedY,xStepRange,yStepRange,speedXRange,speedYRange
+          let thisXStep = parseMaybeRangedProp(ent, 'xStep', 'x') || 0;
+          let thisYStep = parseMaybeRangedProp(ent, 'yStep', 'y') || 0;
+          // NEW: Parse xOffset/yOffset
+          let thisXOffset = parseMaybeRangedProp(ent, 'xOffset', 'x') || 0;
+          let thisYOffset = parseMaybeRangedProp(ent, 'yOffset', 'y') || 0;
+          let thisSpeedX = parseMaybeRangedProp(ent, 'speedX') || 0;
+          let thisSpeedY = parseMaybeRangedProp(ent, 'speedY') || 0;
+          // Animation speed: animationSpeed, animationSpeedRange
+          let thisAnimationSpeed = parseMaybeRangedProp(ent, 'animationSpeed') || ent.animationSpeed;
+          // Status, color, spriteGroup
+          let thisStatus = parseProp(ent, 'status');
+          let thisColor = parseProp(ent, 'color');
+          let thisSpriteGroup = parseProp(ent, 'spriteGroup');
+          */
+          //
+          let entParsedProperties = {
+            // Position: x,y,xRange,yRange
+            x: parseMaybeRangedProp(ent, 'x', 'x'),
+            y: parseMaybeRangedProp(ent, 'y', 'y'),
+            // Steps: xStep,yStep,speedX,speedY,xStepRange,yStepRange,speedXRange,speedYRange
+            xStep: parseMaybeRangedProp(ent, 'xStep', 'x') || 0,
+            yStep: parseMaybeRangedProp(ent, 'yStep', 'y') || 0,
+            // NEW: Parse xOffset/yOffset
+            xOffset: parseMaybeRangedProp(ent, 'xOffset', 'x') || 0,
+            yOffset: parseMaybeRangedProp(ent, 'yOffset', 'y') || 0,
+            speedX: parseMaybeRangedProp(ent, 'speedX') || 0,
+            speedY: parseMaybeRangedProp(ent, 'speedY') || 0,
+            // Animation speed: animationSpeed, animationSpeedRange
+            animationSpeed: parseMaybeRangedProp(ent, 'animationSpeed') || ent.animationSpeed,
+            // Status, color, spriteGroup
+            status: parseProp(ent, 'status'),
+            color: parseProp(ent, 'color'),
+            spriteGroup: parseProp(ent, 'spriteGroup')
+          }
+          //console.log(entParsedProperties.status,ent)
+          let { x, y, xStep, yStep, xOffset, yOffset } = entParsedProperties;
+
+          let finalX = Math.ceil(x + xOffset + (xStep ? ent.xSum + xStep - xStep : 0));
+          let finalY = Math.ceil(y + yOffset + (yStep ? ent.ySum + yStep - yStep : 0));
+          entParsedProperties.x = finalX;
+          entParsedProperties.y = finalY;
+          ent.xSum += entParsedProperties.xStep;
+          ent.ySum += entParsedProperties.yStep;
+
+          const previousProps = NARIZ.ENTITIES.globals.previousProps;
+          //console.log(NARIZ.ENTITIES.globals)
+          if (entParsedProperties.color) {
+            //if (typeof ent.previopreviousProps=='undefined')
+            //  ent.previopreviousProps={}
+            previousProps.color = entParsedProperties.color;//thisColor;
+            //console.log(thisColor, previousProps);
+          }
+
+          return entParsedProperties;
+          /*
+          return {
+            thisX, thisY, thisXStep, thisYStep, thisXOffset, thisYOffset,
+            thisSpeedX, thisSpeedY, thisAnimationSpeed, thisStatus, thisColor,
+            thisSpriteGroup
+          }
+            */
+        }
+
+        // --- Handle composite entities (spriteGroupTiles) with count ---
+        if (ent.spriteGroupTiles && Array.isArray(ent.spriteGroupTiles)) {
+          // 1. Generate N composite children (each a tree, for example)
+          let countComposite = parseProp(ent, 'count') || 1;
+          let compositeChildren = [];
+          let compositeWidths = [];
+          let compositeHeights = [];
+          for (let compositeIdx = 0; compositeIdx < countComposite; compositeIdx++) {
+            let turtle = { x: 0, y: 0, dir: 'up' };
+            let bbox = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+            let children = [];
+            for (const group of ent.spriteGroupTiles) {
+              let groupCount = group.count ? pick(ent, group.count) : 1;
+              for (let i = 0; i < groupCount; i++) {
+                //console.log('turtle before', turtle.x);
+                group.x = 0 + turtle.x;
+                group.y = 0 + turtle.y;
+                let childResult = NARIZ.ENTITIES.parseEntity(group, 0 + turtle.x, 0 + turtle.y, turtle);
+                children = children.concat(childResult.entities);
+                // Update turtle position after placing this tile.
+                let move = group.turtle || 'up';
+                let step = NARIZ.VIEWPORT._CELL_SIZE * 8; // 8x8 sprite assumed
+                if (/right\*(\d+)/.test(move)) step *= parseInt(move.match(/right\*(\d+)/)[1]);
+                if (/left\*(\d+)/.test(move)) step *= parseInt(move.match(/left\*(\d+)/)[1]);
+                switch (move) {
+                  case 'up': turtle.y -= step; break;
+                  case 'down': turtle.y += step; break;
+                  case 'left': turtle.x -= step; break;
+                  case 'right': turtle.x += step; break;
+                  default:
+                    if (/right\*(\d+)/.test(move)) turtle.x += step;
+                    else if (/left\*(\d+)/.test(move)) turtle.x -= step;
+                    break;
+                }
+                //console.log('turtle after', turtle.x);
+                bbox.minX = Math.min(bbox.minX, turtle.x);
+                bbox.maxX = Math.max(bbox.maxX, turtle.x);
+                bbox.minY = Math.min(bbox.minY, turtle.y);
+                bbox.maxY = Math.max(bbox.maxY, turtle.y);
+                //console.log('bbox', bbox.minX, bbox.maxX);
+              }
+            }
+            // Normalize children positions so that they are relative to (0,0)
+            children = children.map(child => {
+              return Object.assign({}, child, {
+                x: child.x - bbox.minX,
+                y: child.y - bbox.minY,
+              });
+            });
+            // Precalculate width/height for this composite
+            let width = bbox.maxX - bbox.minX + NARIZ.VIEWPORT._CELL_SIZE * 8;
+            //console.log('wwi', bbox.maxX - bbox.minX, width);
+            let height = bbox.maxY - bbox.minY + NARIZ.VIEWPORT._CELL_SIZE * 8;
+            compositeChildren.push({
+              children,
+              width,
+              height
+            });
+            compositeWidths.push(width);
+            compositeHeights.push(height);
+          }
+          // 2. Now treat the parent as a normal entity, repeat as needed, and place composite children relative to parent
+          let expanded = [];
+          let parentCount = parseProp(ent, 'count') || 1;
+          for (let i = 0; i < parentCount; i++) {
+
+            // Each parent instance gets its own composite child            
+            let compositeIdx = i % compositeChildren.length;
+            let composite = compositeChildren[compositeIdx];
+
+            //before doing calculations store the actual composed entity size
+            ent.width = composite.width;
+            ent.height = composite.height;
+
+            let parsedProps = parseProperties(ent);
+
+            /*
+            let thisX = parseMaybeRangedProp('x', 'x');
+            let thisY = parseMaybeRangedProp('y', 'y');
+            let thisXStep = parseMaybeRangedProp('xStep', 'x') || 0;
+            let thisYStep = parseMaybeRangedProp('yStep', 'y') || 0;
+            // NEW: Parse xOffset/yOffset
+            let thisXOffset = parseMaybeRangedProp('xOffset', 'x') || 0;
+            let thisYOffset = parseMaybeRangedProp('yOffset', 'y') || 0;
+            */
+
+            //let finalX = Math.ceil(x + xOffset + (xStep ? xSum + xStep - xStep : 0));
+            //let finalY = Math.ceil(y + yOffset + (yStep ? ySum + yStep - yStep : 0));
+            //let finalX = Math.ceil(thisX + (thisXStep ? i * thisXStep : 0));
+            //let finalY = Math.ceil(thisY + (thisYStep ? i * thisYStep : 0));
+
+
+            expanded.push({
+              // Copy extra properties
+              ...ent,
+              id: ent.id ? ent.id + '_' + (i + 1) : undefined,
+              x: parsedProps.x,
+              y: parsedProps.y,
+              spriteGroupComposite: composite.children,
+              countComposite: parentCount,
+              width: composite.width,
+              height: composite.height,
+              spriteGroup: undefined, //composite entities are not drawn, they just act as containers
+            });
+            //const hhhhhhhhhh = NARIZ.ENTITIES.getEntityHeight(ent);
+            //const ww = NARIZ.ENTITIES.getEntityWidth(ent);
+            //console.log('width:', ww, 'height:', hhhhhhhhhh, finalX, thisX, thisXStep, expanded)
+            //xSum += parsedProps.xStep;
+            //ySum += parsedProps.yStep;
+          }
+          return { entities: expanded, bbox: null };
+        }
+        // ====================================================
+        // For leaf entities, loop "count" times and randomize for each instance.
+        let expanded = [];
+        let count = parseProp(ent, 'count'); // count might be 1 or more.
+        //let xSum = 0;
+        //let ySum = 0;
+        for (let i = 0; i < count; i++) {
+          // Randomize each property per instance.
+
+          /*
+          let { thisX, thisY, thisXStep, thisYStep, thisXOffset, thisYOffset,
+            thisSpeedX, thisSpeedY, thisAnimationSpeed, thisStatus, thisColor,
+            thisSpriteGroup } = parseProperties(ent);
+          */
+          let parsedProps = parseProperties(ent);
+
+          /*
+          // Position: x,y,xRange,yRange
+          let thisX = parseMaybeRangedProp('x', 'x');
+          let thisY = parseMaybeRangedProp('y', 'y');
+          // Steps: xStep,yStep,speedX,speedY,xStepRange,yStepRange,speedXRange,speedYRange
+          let thisXStep = parseMaybeRangedProp('xStep', 'x') || 0;
+          let thisYStep = parseMaybeRangedProp('yStep', 'y') || 0;
+          // NEW: Parse xOffset/yOffset
+          let thisXOffset = parseMaybeRangedProp('xOffset', 'x') || 0;
+          let thisYOffset = parseMaybeRangedProp('yOffset', 'y') || 0;
+          let thisSpeedX = parseMaybeRangedProp('speedX') || 0;
+          let thisSpeedY = parseMaybeRangedProp('speedY') || 0;
+          // Animation speed: animationSpeed, animationSpeedRange
+          let thisAnimationSpeed = parseMaybeRangedProp('animationSpeed') || ent.animationSpeed;
+          // Status, color, spriteGroup
+          let thisStatus = parseProp('status');
+          let thisColor = parseProp('color');
+          let thisSpriteGroup = parseProp('spriteGroup');
+          */
+
+          // Calculate final positions; include step offset if present.
+          /*
+          let finalX = Math.ceil(thisX + (thisXStep ? i * thisXStep : 0));
+          let finalY = Math.ceil(thisY + (thisYStep ? i * thisYStep : 0));
+          */
+          //let finalX = Math.ceil(thisX + thisXOffset + (thisXStep ? xSum + thisXStep - thisXStep : 0));
+          //let finalY = Math.ceil(thisY + thisYOffset + (thisYStep ? ySum + thisYStep - thisYStep : 0));
+          let e = Object.assign({}, ent, parsedProps, {
+            //x: finalX,
+            //y: finalY,
+            //speedX: thisSpeedX,
+            //speedY: thisSpeedY,
+            //animationSpeed: thisAnimationSpeed,
+            //status: thisStatus,
+            //color: thisColor,
+            //spriteGroup: thisSpriteGroup,
+            width: NARIZ.ENTITIES.getEntityWidth(ent),
+            height: NARIZ.ENTITIES.getEntityHeight(ent),
+          });
+          expanded.push(e);
+          //xSum += parsedProps.xStep;
+          //ySum += parsedProps.yStep;
+        }
+        //FIXME: expose the internal method -> not clean, but can work for now
+        NARIZ.ENTITIES.parseProperties = parseProperties;
+        return { entities: expanded, bbox: { minX: expanded[0].x, maxX: expanded[0].x, minY: expanded[0].y, maxY: expanded[0].y } };
+      },
+
+      // Calculate width for a (possibly multi-sprite) entity
+      getEntityWidth(entity) {
+        if (entity.width !== undefined) return entity.width;
+        return 8 * NARIZ.VIEWPORT._CELL_SIZE;
+      },
+      getEntityHeight(entity) {
+        if (entity.height !== undefined) return entity.height;
+        return 8 * NARIZ.VIEWPORT._CELL_SIZE;
+      },
+
+      // Helper to update animation timing and frame index
+      updateAnimationFrame(entity, timestamp, spriteGroups) {
+        if (entity.lastTimestamp === undefined) entity.lastTimestamp = 0;
+        if (entity.frameTime === undefined) entity.frameTime = 0;
+        if (entity.frameIndex === undefined) entity.frameIndex = 0;
+        if (entity.lastTimestamp === 0) entity.lastTimestamp = timestamp;
+        entity.frameTime += (timestamp - entity.lastTimestamp) / 1000;
+        let animSpeed = entity.animationSpeed || 0.2;
+        const spriteGroupObj = spriteGroups[entity.spriteGroup];
+        const spriteGroup = spriteGroupObj ? spriteGroupObj[entity.status] : null;
+        if (spriteGroup && entity.frameTime >= animSpeed) {
+          entity.frameIndex = (entity.frameIndex + 1) % spriteGroup.length;
+          entity.frameTime = 0;
+        }
+        entity.lastTimestamp = timestamp;
+      },
+
+      drawEntity(entity, timestamp) {
+        // If the entity is composite (has spriteGroupComposite), draw each child relative to parent's position and update animation timing for each child.
+        if (entity.spriteGroupComposite && Array.isArray(entity.spriteGroupComposite) && entity.spriteGroupComposite.length > 0) {
+          for (const child of entity.spriteGroupComposite) {
+            this.updateAnimationFrame(child, timestamp, this.spriteGroups);
+            const childCopy = Object.assign({}, child, {
+              x: entity.x + child.x,
+              y: entity.y + child.y
+            });
+            this.drawEntity(childCopy, timestamp);
+          }
+          return;
+        }
+        // Otherwise, standard drawing (leaf entity).
+        this.updateAnimationFrame(entity, timestamp, this.spriteGroups);
+        const spriteGroupObj = this.spriteGroups[entity.spriteGroup];
+        if (!spriteGroupObj) return;
+        const spriteGroup = spriteGroupObj[entity.status];
+        if (!spriteGroup) return;
+        let sprite = spriteGroup[entity.frameIndex % spriteGroup.length];
+        if (Array.isArray(sprite)) sprite = sprite[0];
+        NARIZ.SPRITES.drawSprite(sprite, entity.x, entity.y, entity.flipX, entity.flipY, entity.rotate, entity.color);
+      },
+      reparseEntity(params) {
+        let { entityInstance, entityClass } = params
+        let entityClassWithDefaults = Object.assign({}, NARIZ.ENTITIES.globals.defaults, entityClass);
+        //reset helper properties stored in the instance
+        Object.assign(entityClass, { xSum: 0, ySum: 0 })
+        //get only safe properties
+        const reParsedPropsFiltered = NARIZ.ENTITIES.parseProperties(entityClassWithDefaults);
+        Object.assign(entityInstance, reParsedPropsFiltered)
+      },
+      destroyEntity(idOrEntity) {
+        let e = typeof idOrEntity === 'object' ? idOrEntity : this.globals[idOrEntity];
+        if (!e) return;
+        // Remove from expandedEntities
+        const idx = this.expandedEntities.indexOf(e);
+        if (idx !== -1) this.expandedEntities.splice(idx, 1);
+        // Remove from globals if it has an id
+        if (e.id && this.globals[e.id]) {
+          delete this.globals[e.id];
+        }
+      },
+      _READY() {
+        this.spriteGroups = NARIZ.SPRITES.spriteGroups;
+        this.expandedEntities = [];
+        //this.globals = {};
+        for (const ent of this.entities) {
+          const result = this.parseEntity(ent);
+          for (const e of result.entities) {
+            //create entity methods
+            e.moveTo = NARIZ.wrap(NARIZ.ENTITIES.moveEntityTo, e);
+            e.moveLeft = NARIZ.wrap(NARIZ.ENTITIES.moveEntityLeft, e);
+            e.destroy = NARIZ.wrap(NARIZ.ENTITIES.destroyEntity, e);
+            e.reparse = NARIZ.wrap(NARIZ.ENTITIES.reparseEntity, { entityInstance: e, entityClass: ent });
+            //--
+            this.expandedEntities.push(e);
+            if (e.id) this.globals[e.id] = e; //entity lookup - used for example by global events
+          }
+        }
+        NARIZ.registerProcessHandler((currentTime, deltaInSeconds) => {
+          for (const e of this.expandedEntities) {
+            if (typeof e._PROCESS === 'function') {
+              e._PROCESS.call(e, currentTime, deltaInSeconds);
+            }
+          }
+        });
+      },
+      drawAll(timestamp) {
+        for (const e of this.expandedEntities) {
+          this.drawEntity(e, timestamp);
+        }
+      },
+      moveEntityLeft(idOrEntity) {
+        let e = typeof idOrEntity === 'object' ? idOrEntity : this.globals[idOrEntity];
+        if (!e) return;
+        const metersPerCell = NARIZ.VIEWPORT._METERS_PER_CELL;
+        e.x -= (e.speedX * NARIZ._LAST_DELTA_IN_SECONDS) / metersPerCell;
+      },
+      moveEntityRight(idOrEntity) {
+        let e = typeof idOrEntity === 'object' ? idOrEntity : this.globals[idOrEntity];
+        if (!e) return;
+        const metersPerCell = NARIZ.VIEWPORT._METERS_PER_CELL;
+        e.x += (e.speedX * NARIZ._LAST_DELTA_IN_SECONDS) / metersPerCell;
+      },
+      moveEntityTo(idOrEntity, x, y) {
+        let e = typeof idOrEntity === 'object' ? idOrEntity : this.globals[idOrEntity];
+        if (!e) return;
+        if (typeof x === 'string') {
+          e.x = NARIZ.ENTITIES.parsePosition(e, x, 'x');
+        } else if (typeof x === 'number') {
+          e.x = x;
+        }
+        if (typeof y !== 'undefined') {
+          if (typeof y === 'string') {
+            e.y = NARIZ.ENTITIES.parsePosition(e, y, 'y');
+          } else if (typeof y === 'number') {
+            e.y = y;
+          }
+        }
+      },
+    });
+
+    //---
+
+    NARIZ._registerModule('viewport', {
+      _CELL_SIZE: null,
+      _VIRTUAL_CANVAS_WIDTH: null,
+      _VIRTUAL_CANVAS_HEIGHT: null,
+      _METERS_PER_CELL: null,
+      globals: {
+        canvas: null,
+        ctx: null,
+      },
+      _INIT() {
+        this.canvas = document.getElementById('c');
+        this.ctx = this.canvas.getContext('2d');
+        this.ctx.imageSmoothingEnabled = false;
+        NARIZ.EVENT.define('resize', [{ event: 'resize' }]);
+      },
+      _SETUP(w, h, c, m) {
+        this._VIRTUAL_CANVAS_WIDTH = w;
+        this._VIRTUAL_CANVAS_HEIGHT = h;
+        this._CELL_SIZE = c;
+        this._METERS_PER_CELL = m
+        this.resizeCanvas();
+      },
+
+      resizeCanvas() {
+        // Fit canvas to container, keep aspect ratio
+        // Get container dimensions.
+        const container = this.canvas.parentElement;
+        let cw = container.clientWidth;
+        let ch = container.clientHeight;
+
+        // Virtual viewport dimensions and cell size.
+        let vw = this._VIRTUAL_CANVAS_WIDTH;   // e.g., 1024
+        let vh = this._VIRTUAL_CANVAS_HEIGHT;  // e.g., 768
+        let cellSize = this._CELL_SIZE; // e.g., 8
+
+        // Compute target scale as a float
+        let targetScale = Math.min(cw / vw, ch / vh);
+
+        // Quantize the scale so that cellSize * scale is an integer.
+        // For example, with cellSize=8, scale will be forced to a multiple of 1/8.
+        let scale = Math.floor(targetScale * cellSize) / cellSize;
+
+        // Compute final drawn dimensions.
+        let drawW = vw * scale;
+        let drawH = vh * scale;
+
+        // Optionally, center the canvas within the container.
+        // this.canvas.style.marginLeft = `${(cw - drawW) / 2}px`;
+        // this.canvas.style.marginTop  = `${(ch - drawH) / 2}px`;
+
+        // Set canvas dimensions.
+        this.canvas.width = drawW;
+        this.canvas.height = drawH;
+
+        // Save the adjusted scale.
+        this._SCALE = scale;
+      },
+
+
+      toScreen(x, y) {
+        // Map virtual (viewport) coordinates to screen (canvas) coordinates
+        // Use Math.round so that positions snap exactly to pixel values.
+        return [
+          Math.round(x * this._SCALE),
+          Math.round(y * this._SCALE)
+        ];
+      },
+
+      /*
+      toScreenSize(w, h) {
+        return [Math.ceil(w * this._SCALE), Math.ceil(h * this._SCALE)];
+      },
+      */
+      _PROCESS() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      },
+      _ON: {
+        resize() {
+          this.resizeCanvas();
+        }
+      }
+    });
+
+    //---
+
+
+    NARIZ._registerModule('game', {
+      _INIT() {
+        // initialize the viewport aspect, resolution and dimension
+        // NARIZ.VIEWPORT._SETUP(W, H, R, M); 
+        // W=screen width, H=screen height
+        // R=cell size = resolution (H/R,H/R)
+        // M=cell size dimension in meters (Nariz works with 8x8 sprites) - decrease the value to speed up physics
+        NARIZ.VIEWPORT._SETUP(1024, 768, 8, 0.0025);
+        //create actions that can be handled via _ON
+        NARIZ.EVENT.define('left', [{ event: 'key', code: 'ArrowLeft' }]);
+        NARIZ.EVENT.define('right', [{ event: 'key', code: 'ArrowRight' }]);
+      },
+      _PROCESS(currentTime, deltaInSeconds = 0) {
+        // Draw all entities
+        NARIZ.ENTITIES.drawAll(currentTime);
+        // No per-entity _PROCESS here; handled by process handlers
+      },
+      _ON: {
+        left() {
+          // Use global dt for key events
+          NARIZ.ENTITIES.moveEntityLeft('hero');
+        },
+        right() {
+          NARIZ.ENTITIES.moveEntityRight('hero');
+        },
+      }
+    });
+
+    //---
+    NARIZ[`👃`]();
+
+  </script>
+</body>
+
+</html>

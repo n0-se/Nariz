@@ -151,7 +151,8 @@ MIT License. See [`LICENSE`](LICENSE ) for details.
 
 ## Credits
 
-Created by N0se. Inspired by [Godot Engine](https://godotengine.org/), retro games and consoles.
+Created by n0se (that's me). Inspired by [Godot Engine](https://godotengine.org/), retro games, 8-bit Computers and 8-bit Consoles.  
+Hex Sprites based on work from [Orix](www.oryxdesignlab.com). First seen on [TIGSource](https://forums.tigsource.com/index.php?topic=8970.0).
 
 ---
 

@@ -1,5 +1,7 @@
 # Nariz
 
+![alt text](img/image.png)
+
 Nariz is a minimal JavaScript game framework for browser games (little demos for now), focusing on simplicity, modularity, and pixel-perfect rendering. It provides a basic entity-component system, sprite handling, event management, and a virtual viewport for retro-style games.
 
 
